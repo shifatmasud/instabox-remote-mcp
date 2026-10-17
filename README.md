@@ -1,24 +1,42 @@
 # InstaBox Remote MCP
 
-A stateless remote MCP server for InstaBox, running on Cloudflare Workers.
-
-## Endpoints
-
-- MCP: `https://YOUR-WORKER.workers.dev/mcp`
-- Health: `https://YOUR-WORKER.workers.dev/health`
+A stateless remote MCP server for the official `@insforge/instabox-sdk`, deployed as a Cloudflare Worker.
 
 ## Authentication
 
-Use **one secret only: `INSTABOX_API_KEY`**. Configure it as a Cloudflare Worker secret. The same key authenticates incoming MCP client requests and is forwarded to InstaBox as `X-API-Key`. The MCP endpoint accepts the key in either `X-API-Key` or `Authorization: Bearer ...`.
+There is **no separate MCP key and no `INSTABOX_API_KEY` Worker secret**. Configure the MCP client to send your InstaBox API key on each request:
 
-Do not put the key in this repository or in public client-side/browser code. Store it in your MCP client's server-side secret/environment configuration.
+- `X-API-Key: ibk_...` (recommended), or
+- `Authorization: Bearer ibk_...`
 
-## Available tools
+The Worker reads the key from the incoming request and passes it explicitly to each SDK call. InstaBox validates the key when the SDK calls its API. Missing keys are rejected before tool execution. Use HTTPS and keep the key in your MCP client's secret/credential settings; do not hard-code it in a public web page.
+
+## MCP client configuration
+
+```json
+{
+  "mcpServers": {
+    "instabox": {
+      "url": "https://instabox-remote-mcp.<your-subdomain>.workers.dev/mcp",
+      "headers": {
+        "X-API-Key": "ibk_your_real_key"
+      }
+    }
+  }
+}
+```
+
+Use your actual deployed Worker URL. If your MCP client supports environment-variable interpolation, reference its secret store instead of putting the literal key in a shared config file.
+
+## Tools
 
 - `list_machines`
 - `get_machine`
 - `create_machine`
 - `run_command`
+- `read_file`
+- `list_files`
+- `write_file`
 - `pause_machine`
 - `resume_machine`
 - `delete_machine`
@@ -26,36 +44,13 @@ Do not put the key in this repository or in public client-side/browser code. Sto
 - `get_machine_usage`
 - `get_account_usage`
 
-Machine creation may incur usage charges. Shell commands can modify or delete data. Deleting a machine permanently removes it and its disks.
+Machine creation and shell/file tools can incur charges or modify/delete data. The SDK is used for all InstaBox operations; this Worker does not manually construct InstaBox REST requests.
 
-## Deploy
+## Local development
 
-1. Deploy `src/index.js` as a Cloudflare Worker named `instabox-remote-mcp` (or connect this repository to Workers Builds).
-2. In the Worker settings, add the secret `INSTABOX_API_KEY` with your InstaBox API key (`ibk_...`).
-3. Deploy, then verify `/health` returns `{"ok":true,"service":"instabox-remote-mcp"}`.
-4. Configure your MCP client to use `/mcp` and send the same key as a request header.
+```sh
+npm install
+npm run dev
+``
 
-The optional `INSTABOX_API_URL` variable can override the upstream base URL; by default it is `https://api.instabox.sh`.
-
-## MCP client configuration
-
-Adapt this to the client’s supported environment-variable syntax:
-
-```json
-{
-  "mcpServers": {
-    "instabox": {
-      "url": "https://YOUR-WORKER.workers.dev/mcp",
-      "headers": {
-        "X-API-Key": "${INSTABOX_API_KEY}"
-      }
-    }
-  }
-}
-```
-
-Some MCP clients require a literal secret value or a separate secret manager rather than expanding environment variables inside JSON. Keep the value private.
-
-## Notes
-
-This implementation handles stateless JSON-RPC over HTTP POST and exposes a health endpoint. It does not implement server-sent events or session state.
+Deploy with `npm run deploy` from an authenticated Wrangler environment. No Worker secret setup is required.
